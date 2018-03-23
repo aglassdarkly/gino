@@ -1,6 +1,7 @@
 import weakref
 
 import sqlalchemy as sa
+from sqlalchemy.orm import exc
 from sqlalchemy.engine.url import make_url, URL
 from sqlalchemy.sql.base import Executable
 from sqlalchemy.sql.schema import SchemaItem
@@ -154,6 +155,42 @@ class GinoExecutor:
                 'No Connection in context, please provide one')
         return connection.iterate(self._query, *multiparams, **params)
 
+    async def one(self, *multiparams, **params):
+        """
+        Convenience method to implement SQLAlchemy behavior.
+
+        Returns result if there is exactly one.
+
+        Raises :class:`~sqlalchemy.orm.exc.NoResultFound` if there are no
+        results.
+
+        Raises :class:`~sqlalchemy.orm.exc.MultipleResultsFound` if there
+        are multiple results.
+
+        """
+        result = await self.all(*multiparams, **params)
+        if not result:
+            raise exc.NoResultFound
+        elif len(result) > 1:
+            raise exc.MultipleResultsFound
+        else:
+            return result[0]
+
+    async def one_or_none(self, *multiparams, **params):
+        """
+        Convenience method to implement SQLAlchemy behavior.
+
+        Returns result if there is exactly one or None if there is no result.
+
+        Raises :exc:`~sqlalchemy.orm.exc.MultipleResultsFound` if there are
+        multiple results.
+
+        """
+        try:
+            return await self.one(*multiparams, **params)
+        except exc.NoResultFound:
+            return None
+
 
 class _BindContext:
     def __init__(self, *args):
@@ -242,40 +279,40 @@ class Gino(sa.MetaData):
     model_base_classes = (CRUDModel,)
     """
     Overridable default model classes to build the :attr:`Model`.
-    
+
     Default is :class:`(CRUDModel, ) <gino.crud.CRUDModel>`.
-    
+
     """
 
     query_executor = GinoExecutor
     """
-    The overridable ``gino`` extension class on 
+    The overridable ``gino`` extension class on
     :class:`~sqlalchemy.sql.expression.Executable`.
-    
+
     This class will be set as the getter method of the property ``gino`` on
     :class:`~sqlalchemy.sql.expression.Executable` and its subclasses, if
-    ``ext`` and ``query_ext`` arguments are both ``True``. Default is 
+    ``ext`` and ``query_ext`` arguments are both ``True``. Default is
     :class:`GinoExecutor`.
-    
+
     """
 
     schema_visitor = GinoSchemaVisitor
     """
-    The overridable ``gino`` extension class on 
+    The overridable ``gino`` extension class on
     :class:`~sqlalchemy.schema.SchemaItem`.
-    
+
     This class will be set as the getter method of the property ``gino`` on
     :class:`~sqlalchemy.schema.SchemaItem` and its subclasses, if ``ext`` and
-    ``schema_ext`` arguments are both ``True``. Default is 
+    ``schema_ext`` arguments are both ``True``. Default is
     :class:`~gino.schema.GinoSchemaVisitor`.
-    
+
     """
 
     no_delegate = {'create_engine', 'engine_from_config'}
     """
     A set of symbols from :mod:`sqlalchemy` which is not delegated by
     :class:`Gino`.
-    
+
     """
 
     def __init__(self, bind=None, model_classes=None, query_ext=True,
